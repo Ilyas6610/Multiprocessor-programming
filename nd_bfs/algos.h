@@ -8,7 +8,7 @@
 #include <execution>
 #include <algorithm>
 #include "profiler.h"
-#define N 4
+#define N 200
 
 struct Node {
 	int x, y, z;
@@ -64,7 +64,6 @@ void bfs(Graph& g, GraphInt<int>& paths) {
 
 void nd_bfs(Graph& g, GraphInt<std::shared_ptr<std::atomic<int>>>& paths) {
 	std::vector<Node> frontier = { {0, 0, 0} };
-	std::vector<Node> newFrontier; 
 	std::vector<int> positions;
 	int len = 0;
 
@@ -82,29 +81,24 @@ void nd_bfs(Graph& g, GraphInt<std::shared_ptr<std::atomic<int>>>& paths) {
 
 		std::inclusive_scan(std::execution::par_unseq, positions.begin(),
 			positions.end(), positions.begin());
-		newFrontier.resize(*(positions.end() - 1));
+		std::vector<Node> newFrontier(*(positions.end() - 1), {-1, -1, -1});
 
 		tbb::parallel_for(tbb::blocked_range<int>(0, frontier.size()),
 			[&](tbb::blocked_range<int> r) {
-
 				for (auto i = r.begin(); i != r.end(); i++) {
 					auto node = frontier[i];
 					const std::vector<Node>& children = g[node.x][node.y][node.z];
+					int beg = i == 0 ? 0 : positions[i - 1];
 
 					tbb::parallel_for(
-						tbb::blocked_range<int>(
-							i == 0 ? 0 : positions[i - 1], positions[i]),
+						tbb::blocked_range<int>(beg , positions[i]),
 						[&](tbb::blocked_range<int> r1) {
-							int beg = i == 0 ? 0 : positions[i-1];
 							for (int j = r1.begin(); j < r1.end(); j++) {
 								int testVal = 0;
 								auto& k = children[j-beg];
-								if (paths[k.x][k.y][k.z]->load() == 0 &&
+								if (!paths[k.x][k.y][k.z]->load() &&
 									paths[k.x][k.y][k.z]->compare_exchange_strong(testVal, len)) {
 									newFrontier[j] = k;
-								}
-								else {
-									newFrontier[j] = { -1, -1, -1 };
 								}
 							}
 						});
